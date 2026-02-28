@@ -1,0 +1,13 @@
+# MIDI Repair Tool Dependencies
+
+# Core MIDI handling library
+mido>=2.0.0
+
+# Numerical computing for visualization
+numpy>=1.20.0
+
+# Python standard library (no install needed):
+# - tkinter (built-in)
+# - argparse (built-in)
+# - collections (built-in)
+# - os, sys, shutil (built-in)

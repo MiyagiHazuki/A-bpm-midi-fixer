@@ -1,0 +1,368 @@
+#!/usr/bin/env python3
+"""
+MIDI Repair Tool - GUI Application
+
+A tkinter-based GUI for repairing problematic MIDI files:
+- One-click fix for problematic MIDI
+- BPM reset option
+- Import MIDI functionality
+- Export fixed MIDI functionality
+"""
+
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext
+import sys
+import os
+
+# Add src to path for imports
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from midi_repair.core.repair import repair_midi, verify_midi, detect_original_bpm
+from midi_repair.core.analyzer import analyze_midi, get_diagnosis_summary
+
+
+class MidiRepairGUI:
+    """Main GUI Application for MIDI Repair Tool"""
+
+    def __init__(self, root):
+        self.root = root
+        self.root.title("MIDI Repair Tool")
+        self.root.geometry("700x650")
+        self.root.resizable(True, True)
+
+        # State variables
+        self.input_file = None
+        self.output_file = None
+        self.original_bpm = None
+        self.analysis_result = None
+
+        # Configure style
+        self.setup_styles()
+
+        # Create GUI
+        self.create_widgets()
+
+        # Center window
+        self.center_window()
+
+    def setup_styles(self):
+        """Configure ttk styles"""
+        style = ttk.Style()
+        style.theme_use("clam")
+
+        # Configure button styles
+        style.configure("Primary.TButton", font=("Arial", 11, "bold"), padding=10)
+        style.configure("Secondary.TButton", font=("Arial", 10), padding=8)
+        style.configure("Success.TButton", font=("Arial", 11, "bold"), padding=10)
+
+        # Configure label styles
+        style.configure("Title.TLabel", font=("Arial", 16, "bold"))
+        style.configure("Subtitle.TLabel", font=("Arial", 12, "bold"))
+        style.configure("Normal.TLabel", font=("Arial", 10))
+        style.configure("Info.TLabel", font=("Arial", 9), foreground="#666")
+
+    def center_window(self):
+        """Center the window on screen"""
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+
+    def create_widgets(self):
+        """Create all GUI widgets"""
+
+        # Main container
+        main_frame = ttk.Frame(self.root, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Title
+        title_label = ttk.Label(
+            main_frame, text="MIDI Repair Tool", style="Title.TLabel"
+        )
+        title_label.pack(pady=(0, 20))
+
+        # === SECTION 1: Import MIDI ===
+        self.create_import_section(main_frame)
+
+        # === SECTION 2: BPM Settings ===
+        self.create_bpm_section(main_frame)
+
+        # === SECTION 3: Action Buttons ===
+        self.create_action_section(main_frame)
+
+        # === SECTION 4: Status/Log Area ===
+        self.create_status_section(main_frame)
+
+    def create_import_section(self, parent):
+        """Create the import section"""
+        import_frame = ttk.LabelFrame(parent, text="1. Import MIDI File", padding="15")
+        import_frame.pack(fill=tk.X, pady=(0, 15))
+
+        # File path display
+        self.file_path_var = tk.StringVar(value="No file selected")
+        file_path_label = ttk.Label(
+            import_frame,
+            textvariable=self.file_path_var,
+            style="Normal.TLabel",
+            wraplength=500,
+        )
+        file_path_label.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Import button
+        import_btn = ttk.Button(
+            import_frame,
+            text="📂 Browse...",
+            style="Secondary.TButton",
+            command=self.import_midi,
+        )
+        import_btn.pack(side=tk.RIGHT)
+
+    def create_bpm_section(self, parent):
+        """Create the BPM settings section"""
+        bpm_frame = ttk.LabelFrame(parent, text="2. BPM Settings", padding="15")
+        bpm_frame.pack(fill=tk.X, pady=(0, 15))
+
+        # BPM input row
+        bpm_input_frame = ttk.Frame(bpm_frame)
+        bpm_input_frame.pack(fill=tk.X)
+
+        ttk.Label(bpm_input_frame, text="Target BPM:", style="Normal.TLabel").pack(
+            side=tk.LEFT, padx=(0, 10)
+        )
+
+        # BPM input field
+        self.bpm_var = tk.StringVar(value="80")
+        bpm_entry = ttk.Entry(
+            bpm_input_frame, textvariable=self.bpm_var, width=10, font=("Arial", 11)
+        )
+        bpm_entry.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Detect button
+        detect_btn = ttk.Button(
+            bpm_input_frame,
+            text="🔍 Auto-Detect",
+            style="Secondary.TButton",
+            command=self.detect_bpm,
+        )
+        detect_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Info label
+        self.bpm_info_var = tk.StringVar(value="Default: 80 BPM")
+        bpm_info_label = ttk.Label(
+            bpm_frame, textvariable=self.bpm_info_var, style="Info.TLabel"
+        )
+        bpm_info_label.pack(pady=(10, 0))
+
+    def create_action_section(self, parent):
+        """Create the action buttons section"""
+        action_frame = ttk.LabelFrame(parent, text="3. Actions", padding="15")
+        action_frame.pack(fill=tk.X, pady=(0, 15))
+
+        # Buttons row
+        buttons_frame = ttk.Frame(action_frame)
+        buttons_frame.pack(fill=tk.X)
+
+
+        # Fix button (main action)
+        self.fix_btn = ttk.Button(
+            buttons_frame,
+            text="⚡ One-Click Fix",
+            style="Success.TButton",
+            command=self.fix_midi,
+            state=tk.DISABLED,
+        )
+
+        # Status/log area
+        self.export_btn.pack(side=tk.LEFT)
+
+    def create_status_section(self, parent):
+        """Create the status/log area"""
+        status_frame = ttk.LabelFrame(parent, text="Status / Log", padding="15")
+        status_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Status text area
+        self.status_text = scrolledtext.ScrolledText(
+            status_frame, height=12, wrap=tk.WORD, font=("Courier", 9)
+        )
+        self.status_text.pack(fill=tk.BOTH, expand=True)
+
+        # Configure text tags
+        self.status_text.tag_config("info", foreground="#0066cc")
+        self.status_text.tag_config("success", foreground="#00aa00")
+        self.status_text.tag_config("error", foreground="#cc0000")
+        self.status_text.tag_config("warning", foreground="#cc6600")
+
+        # Initial message
+        self.log("Welcome to MIDI Repair Tool!", "info")
+        self.log("Import a MIDI file to get started.", "info")
+
+    def log(self, message, tag="normal"):
+        """Add a message to the status log"""
+        self.status_text.insert(tk.END, message + "\n", tag)
+        self.status_text.see(tk.END)
+        self.root.update_idletasks()
+
+    def import_midi(self):
+        """Handle MIDI file import"""
+        filename = filedialog.askopenfilename(
+            title="Select MIDI File",
+            filetypes=[("MIDI files", "*.mid *.midi"), ("All files", "*.*")],
+        )
+
+        if filename:
+            self.input_file = filename
+            self.file_path_var.set(os.path.basename(filename))
+            self.log(f"\n--- File imported ---", "info")
+            self.log(f"File: {filename}", "info")
+
+            # Enable buttons
+
+            self.fix_btn.config(state=tk.NORMAL)
+
+            # Auto-detect BPM
+            self.detect_bpm()
+
+            # Auto-analyze
+            self.analyze_midi()
+
+    def detect_bpm(self):
+        """Detect original BPM from loaded file"""
+        if not self.input_file:
+            messagebox.showwarning("No File", "Please import a MIDI file first.")
+            return
+
+        try:
+            detected = detect_original_bpm(self.input_file)
+            if detected:
+                self.original_bpm = detected
+                self.bpm_var.set(str(detected))
+                self.bpm_info_var.set(f"Detected original BPM: {detected}")
+                self.log(f"Detected original BPM: {detected}", "info")
+            else:
+                self.bpm_info_var.set("Could not detect BPM, using default 80")
+                self.log("Could not detect original BPM", "warning")
+        except Exception as e:
+            self.log(f"Error detecting BPM: {e}", "error")
+
+    def analyze_midi(self):
+        """Analyze the loaded MIDI file"""
+        if not self.input_file:
+            return
+
+        self.log("\n--- Analyzing MIDI file ---", "info")
+
+        try:
+            self.analysis_result = analyze_midi(self.input_file, verbose=True)
+
+            # Log summary
+            if self.analysis_result.get("issues"):
+                self.log("\nIssues found:", "warning")
+                for issue in self.analysis_result["issues"]:
+                    self.log(f"  • {issue}", "warning")
+            else:
+                self.log("\nNo issues detected", "success")
+
+            # Update status
+            self.log(f"\nFile: {self.analysis_result.get('file_path', 'N/A')}", "info")
+            self.log(f"Tracks: {self.analysis_result.get('track_count', 0)}", "info")
+            self.log(f"Type: {self.analysis_result.get('file_type', 'N/A')}", "info")
+
+        except Exception as e:
+            self.log(f"Error analyzing file: {e}", "error")
+            messagebox.showerror("Analysis Error", f"Failed to analyze MIDI file:\n{e}")
+
+    def fix_midi(self):
+        """Fix the loaded MIDI file"""
+        if not self.input_file:
+            messagebox.showwarning("No File", "Please import a MIDI file first.")
+            return
+
+        # Get BPM value
+        try:
+            target_bpm = int(self.bpm_var.get())
+            if target_bpm <= 0:
+                raise ValueError("BPM must be positive")
+        except ValueError:
+            messagebox.showerror(
+                "Invalid BPM", "Please enter a valid BPM value (positive integer)."
+            )
+            return
+
+        self.log("\n--- Fixing MIDI file ---", "info")
+        self.log(f"Target BPM: {target_bpm}", "info")
+
+        # Generate output filename
+        base, ext = os.path.splitext(self.input_file)
+        self.output_file = f"{base}_fixed{ext}"
+
+        try:
+            success, message, details = repair_midi(
+                input_file=self.input_file,
+                output_file=self.output_file,
+                target_bpm=target_bpm,
+                verbose=True,
+            )
+
+            if success:
+                self.log(f"\n✓ {message}", "success")
+                self.log(f"Output: {self.output_file}", "success")
+
+                # Verify the output
+                verify_result = verify_midi(self.output_file)
+                if verify_result["valid"]:
+                    self.log("✓ Verification passed", "success")
+                    self.export_btn.config(state=tk.NORMAL)
+                    messagebox.showinfo(
+                        "Success",
+                        f"MIDI file repaired successfully!\n\nOutput: {self.output_file}",
+                    )
+                else:
+                    self.log(
+                        f"⚠ Verification issues: {verify_result['errors']}", "warning"
+                    )
+            else:
+                self.log(f"✗ {message}", "error")
+                messagebox.showerror("Repair Failed", message)
+
+        except Exception as e:
+            self.log(f"✗ Error: {e}", "error")
+            messagebox.showerror("Error", f"Failed to repair MIDI file:\n{e}")
+
+    def export_midi(self):
+        """Export (save) the fixed MIDI file"""
+        if not self.output_file or not os.path.exists(self.output_file):
+            messagebox.showwarning("No File", "No fixed MIDI file to export.")
+            return
+
+        # Ask for save location
+        filename = filedialog.asksaveasfilename(
+            title="Save Fixed MIDI As",
+            defaultextension=".mid",
+            filetypes=[("MIDI files", "*.mid"), ("All files", "*.*")],
+            initialfile=os.path.basename(self.output_file),
+        )
+
+        if filename:
+            try:
+                import shutil
+
+                shutil.copy2(self.output_file, filename)
+                self.log(f"\n✓ Exported to: {filename}", "success")
+                messagebox.showinfo("Exported", f"Fixed MIDI saved to:\n{filename}")
+            except Exception as e:
+                self.log(f"✗ Export error: {e}", "error")
+                messagebox.showerror("Export Error", f"Failed to export file:\n{e}")
+
+
+def main():
+    """Main entry point"""
+    root = tk.Tk()
+    app = MidiRepairGUI(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()

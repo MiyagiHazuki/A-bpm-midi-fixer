@@ -11,6 +11,21 @@ import os
 from .models import Section
 
 
+def _seconds_to_ticks(seconds: float, bpm: int, ticks_per_beat: int) -> int:
+    """Convert seconds to MIDI ticks based on BPM.
+
+    Args:
+        seconds: Time in seconds
+        bpm: Beats per minute
+        ticks_per_beat: Ticks per beat from MIDI file
+
+    Returns:
+        Time in ticks
+    """
+    ticks_per_second = (ticks_per_beat * bpm) / 60.0
+    return int(seconds * ticks_per_second)
+
+
 def export_segments_to_midi(
     input_file: str,
     output_file: str,
@@ -54,24 +69,32 @@ def export_segments_to_midi(
         )
 
         # Add tempo changes for each segment
+        last_ticks = 0
         last_time = 0.0
-        for section in sorted_sections:
-            if section.start > last_time:
-                # Add tempo change at segment start
-                tempo_value = mido.bpm2tempo(section.bpm)
-                new_tempo_track.append(
-                    MetaMessage(
-                        "set_tempo",
-                        tempo=tempo_value,
-                        time=int(section.start * mid.ticks_per_beat),
-                    )
+        for i, section in enumerate(sorted_sections):
+            # Calculate delta time from previous tempo event
+            current_ticks = _seconds_to_ticks(
+                section.start, section.bpm, mid.ticks_per_beat
+            )
+            delta_ticks = current_ticks - last_ticks
+
+            # Add tempo change at segment start (always add for first segment)
+            tempo_value = mido.bpm2tempo(section.bpm)
+            new_tempo_track.append(
+                MetaMessage(
+                    "set_tempo",
+                    tempo=tempo_value,
+                    time=delta_ticks,
+                )
+            )
+
+            if verbose:
+                print(
+                    f"  [{section.start:.1f}s - {section.end:.1f}s]: {section.bpm} BPM "
+                    f"(delta_ticks={delta_ticks})"
                 )
 
-                if verbose:
-                    print(
-                        f"  [{section.start:.1f}s - {section.end:.1f}s]: {section.bpm} BPM"
-                    )
-
+            last_ticks = current_ticks
             last_time = section.end
 
         # Copy other tracks (skip original tempo events from track 0)
